@@ -1,7 +1,5 @@
 from contextlib import contextmanager
 from typing import Iterator
-import json
-import shutil
 from pathlib import Path
 
 from fastapi.exceptions import HTTPException
@@ -13,9 +11,9 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, Session
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
-from typing import Optional, List, Literal
+from typing import Optional, List
 
 from dotenv import load_dotenv
 
@@ -25,14 +23,12 @@ load_dotenv()
 
 app = FastAPI()
 
-# Configuração do banco de dados
 DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Modelo SQLAlchemy
 class SistemaDB(Base):
     __tablename__ = "sistemas"
 
@@ -41,7 +37,6 @@ class SistemaDB(Base):
     version = Column(Integer, nullable=False, default=1)
     arquivo = Column(String, nullable=True)
 
-# Criar tabelas
 Base.metadata.create_all(bind=engine)
 
 @contextmanager
@@ -52,7 +47,6 @@ def Database() -> Iterator[Session]:
     finally:
         db.close()
 
-# Modelos Pydantic
 class SistemaBase(BaseModel):
     id: Optional[int] = Field(None, description="ID do sistema")
     nome: str = Field(description="nome do sistema")
@@ -129,11 +123,6 @@ def download_arquivo_sistema(id_sistema: int):
                     filename=sistema.nome + '.exe'
                 )
             arquivo_path = Path( Path(__file__).resolve().parent / Path('static') / 'sistemas' / sistema.nome / str(sistema.version) / f'{sistema.nome}.exe' )
-            # if not arquivo_path.exists():
-            #     raise HTTPException(
-            #         status_code=status.HTTP_404_NOT_FOUND,
-            #         detail="Arquivo não encontrado no servidor"
-            #     )
 
             return FileResponse(
                 path=str(arquivo_path), 
@@ -148,29 +137,6 @@ def download_arquivo_sistema(id_sistema: int):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao fazer download do arquivo: {str(e)}"
         )
-    
-
-# @app.get("/sistemas", response_model=SistemaResponse,
-#          summary="Listar sistema por nome",
-#          description="Lista um sistema cadastrado pelo seu nome")
-# def listar_sistema_por_nome(sistema_nome: str = Query(...)):
-#     try:
-#         with Database() as db:
-#             sistema = db.query(SistemaDB).filter(SistemaDB.nome == sistema_nome).first()
-#             if not sistema:
-#                 raise HTTPException(
-#                     status_code=status.HTTP_404_NOT_FOUND,
-#                     detail=f"Sistema com nome {sistema_nome} não encontrado"
-#                 )
-#             return SistemaResponse.model_validate(sistema)
-
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"Erro ao listar sistema: {str(e)}"
-#         )
-#     except HTTPException:
-#         raise
 
 @app.get("/sistemas/{sistema_id}", response_model=SistemaResponse,
          summary="Listar sistema por ID",
@@ -200,10 +166,9 @@ def listar_sistema_por_id(sistema_id: int):
 def criar_sistema(sistema: SistemaCreate):
     try:
         with Database() as db:
-            # Criar novo sistema
             novo_sistema = SistemaDB(
-                nome=sistema.nome,  # Usando 'nome' na tabela
-                version=1  # Versão inicial sempre 1
+                nome=sistema.nome,
+                version=1
             )
             
             db.add(novo_sistema)
@@ -218,7 +183,7 @@ def criar_sistema(sistema: SistemaCreate):
             detail=f"Erro ao criar sistema: {str(e)}"
         )
 
-@app.patch('/sistema/', summary='Atualizar sistema',
+@app.patch('/sistemas/', summary='Atualizar sistema',
            description='Atualiza o registro do sistema existente')
 def atualizar_cadastro_sistema(sistema_info: SistemaCreate = Body(...)):
     try:
@@ -241,7 +206,7 @@ def atualizar_cadastro_sistema(sistema_info: SistemaCreate = Body(...)):
     except HTTPException:
         raise
 
-@app.post("/sistema/{sistema_id}/arquivo",
+@app.post("/sistemas/{sistema_id}/arquivo",
           summary="Adicionar arquivo ao sistema",
           description="Adiciona arquivo .exe ao sistema e incrementa a versão")
 async def adicionar_arquivo_sistema(
@@ -250,20 +215,13 @@ async def adicionar_arquivo_sistema(
 ):
 
     try:
-        # Verificar se o arquivo é um .exe
         if not arquivo.content_type == 'application/x-msdownload':
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="O arquivo deve ser um executável (.exe)"
             )
-        # if not arquivo.filename.lower().endswith('.exe'):
-        #     raise HTTPException(
-        #         status_code=status.HTTP_400_BAD_REQUEST,
-        #         detail="O arquivo deve ser um executável (.exe)"
-        #     )
         
         with Database() as db:
-            # Buscar o sistema no banco
             sistema = db.query(SistemaDB).filter(SistemaDB.id == sistema_id).first()
             if not sistema:
                 raise HTTPException(
@@ -271,36 +229,11 @@ async def adicionar_arquivo_sistema(
                     detail=f"Sistema com ID {sistema_id} não encontrado"
                 )
             
-            # nova_versao = sistema.version + 1
-            
             base_dir = Path(f"static/sistemas/{sistema.nome}/{sistema.version}")
             base_dir.mkdir(parents=True, exist_ok=True)
             
-            # versoes_existentes = []
-            # for pasta in base_dir.iterdir():
-            #     if pasta.is_dir() and pasta.name.isdigit():
-            #         versoes_existentes.append(int(pasta.name))
-            
-            # versao_maxima_pasta = max(versoes_existentes) if versoes_existentes else 0
-            
-            # if versao_maxima_pasta >= nova_versao:
-            #     nova_versao = versao_maxima_pasta + 1
-            
-            # versao_dir = base_dir / str(nova_versao)
-            # versao_dir.mkdir(exist_ok=True)
-            
-            # arquivo_destino = versao_dir / "main.exe"
-
-
-            
             with open(base_dir / arquivo.filename, "wb") as arq:
                 arq.write(arquivo.file.read())
-                # shutil.copyfileobj(arquivo.file, buffer)
-            
-            # sistema.version = nova_versao
-            # sistema.arquivo = str(arquivo_destino)  # Usar 'arquivo'
-            # db.commit()
-            # db.refresh(sistema)
             
             return JSONResponse({'mensagem':'Sucesso!'},201)
             
