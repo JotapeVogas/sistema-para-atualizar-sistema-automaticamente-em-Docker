@@ -160,7 +160,7 @@ def listar_sistema_por_id(sistema_id: int):
     except HTTPException:
         raise
 
-@app.post("/sistema/", response_model=SistemaResponse,
+@app.post("/sistemas/", response_model=SistemaResponse,
           summary="Criar novo sistema",
           description="Cria um novo sistema no banco de dados")
 def criar_sistema(sistema: SistemaCreate):
