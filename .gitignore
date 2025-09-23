@@ -246,4 +246,6 @@ network/
 # Docker temporary files
 tmp/
 
+output/
+
 *.exe
